@@ -1,0 +1,76 @@
+package app_test
+
+import (
+	"context"
+	"reflect"
+	"testing"
+	"time"
+
+	"github.com/omcrgnt/app"
+	"github.com/omcrgnt/demo/v2/internal/api/http"
+	orderhttp "github.com/omcrgnt/demo/v2/internal/api/http/order"
+	"github.com/omcrgnt/demo/v2/internal/data/sync/item/memory"
+	ordermemory "github.com/omcrgnt/demo/v2/internal/data/sync/order/memory"
+	"github.com/omcrgnt/demo/v2/internal/domain/service/item"
+	"github.com/omcrgnt/demo/v2/internal/domain/service/order"
+	"github.com/omcrgnt/res"
+	"github.com/omcrgnt/runner"
+	srvhttp "github.com/omcrgnt/srv-http"
+)
+
+type resources struct {
+	App             *app.App `ecfg:"APP"`
+	Runner          *runner.Runner
+	RepoItem        memory.RepoRoot
+	ServiceItem     *item.Service `ecfg:"SERVICE_ITEM"`
+	RepoOrder       ordermemory.RepoRoot
+	ServiceOrder    *order.Service
+	Metrics         http.Metrics
+	ServerHTTPItem  *http.Server `ecfg:"SERVER_HTTP_ITEM"`
+	APIItem         *http.API
+	ServerHTTPOrder *srvhttp.Config[*orderhttp.API] `ecfg:"SERVER_HTTP_ORDER"`
+	APIOrder        *orderhttp.API
+}
+
+func TestBootstrap_injectsRunnerIntoApp(t *testing.T) {
+	t.Setenv("DEMO_APP_SHUTDOWN_TIMEOUT", "5s")
+	t.Setenv("DEMO_SERVER_HTTP_ITEM_LABEL", "demo")
+	t.Setenv("DEMO_SERVER_HTTP_ITEM_HOST", "127.0.0.1")
+	t.Setenv("DEMO_SERVER_HTTP_ITEM_PORT", "8080")
+	t.Setenv("DEMO_SERVICE_ITEM_MAX_LIST_LEN", "100")
+	t.Setenv("DEMO_SERVER_HTTP_ORDER_LABEL", "orders")
+	t.Setenv("DEMO_SERVER_HTTP_ORDER_HOST", "127.0.0.1")
+	t.Setenv("DEMO_SERVER_HTTP_ORDER_PORT", "8081")
+
+	var r resources
+	reg, err := app.Bootstrap(&r, app.Pipeline{
+		Registry:  res.New(),
+		EnvPrefix: "DEMO",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	appAny, err := reg.GetOneByType(reflect.TypeOf((*app.App)(nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := appAny.(*app.App)
+	if a.GracePeriod() != 5*time.Second {
+		t.Fatalf("shutdown: got %v", a.GracePeriod())
+	}
+
+	runAny, err := reg.GetOneByType(reflect.TypeOf((*runner.Runner)(nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runAny.(*runner.Runner) == nil {
+		t.Fatal("expected runner")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := a.Serve(ctx, reg); err != nil {
+		t.Fatal(err)
+	}
+}
