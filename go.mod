@@ -12,7 +12,7 @@ require (
 	github.com/omcrgnt/ecfg v0.20.1
 	github.com/omcrgnt/res v0.20.2
 	github.com/omcrgnt/runner v0.20.1
-	github.com/omcrgnt/sdi v1.3.1
+	github.com/omcrgnt/sdi v0.20.3
 )
 
 require (
