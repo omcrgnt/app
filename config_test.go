@@ -7,6 +7,13 @@ import (
 	"github.com/omcrgnt/app"
 )
 
+func TestDefaultApp_gracePeriod(t *testing.T) {
+	got := app.DefaultApp().(*app.App).GracePeriod()
+	if got != 5*time.Second {
+		t.Fatalf("shutdown: got %v", got)
+	}
+}
+
 func TestSpec_Build_defaultShutdown(t *testing.T) {
 	appAny, err := app.Spec{}.Build()
 	if err != nil {

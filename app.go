@@ -6,8 +6,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/omcrgnt/builder"
-	"github.com/omcrgnt/res"
 	"github.com/omcrgnt/runner"
 )
 
@@ -33,7 +31,7 @@ type App struct {
 	shutdownTimeout time.Duration
 }
 
-func (a *App) BuildConfig() (builder.Builder, error) {
+func (a *App) BuildConfig() (Materializer, error) {
 	return &Spec{}, nil
 }
 
@@ -48,6 +46,11 @@ func (s Spec) Build() (any, error) {
 		d = DefaultShutdownTimeout
 	}
 	return &App{shutdownTimeout: d}, nil
+}
+
+// DefaultApp returns the system App resource for app/use registration.
+func DefaultApp() any {
+	return &App{}
 }
 
 func (a *App) Deps() []any {
@@ -72,13 +75,13 @@ func (a *App) GracePeriod() time.Duration {
 }
 
 // Serve runs until ctx is cancelled, then stops resources via injected [runner.Runner].
-func (a *App) Serve(ctx context.Context, reg res.Registry) error {
+func (a *App) Serve(ctx context.Context) error {
 	if a.runner == nil {
 		return fmt.Errorf("app: runner not injected")
 	}
 
 	go func() {
-		if err := a.runner.Run(ctx, reg); err != nil {
+		if err := a.runner.Run(ctx); err != nil {
 			slog.Error("runner failed", "err", err)
 		}
 	}()
@@ -87,7 +90,7 @@ func (a *App) Serve(ctx context.Context, reg res.Registry) error {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), a.GracePeriod())
 	defer cancel()
-	if err := a.runner.Stop(shutdownCtx, reg); err != nil {
+	if err := a.runner.Stop(shutdownCtx); err != nil {
 		return fmt.Errorf("app: shutdown: %w", err)
 	}
 	return nil
