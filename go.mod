@@ -8,11 +8,10 @@ retract (
 )
 
 require (
-	github.com/omcrgnt/builder v0.20.2
-	github.com/omcrgnt/ecfg v0.20.1
-	github.com/omcrgnt/res v0.20.2
-	github.com/omcrgnt/runner v0.20.1
-	github.com/omcrgnt/sdi v0.20.3
+	github.com/omcrgnt/ecfg v0.21.2
+	github.com/omcrgnt/res v0.22.0
+	github.com/omcrgnt/runner v0.21.0
+	github.com/omcrgnt/sdi v0.21.0
 )
 
 require (
