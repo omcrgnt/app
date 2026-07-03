@@ -9,6 +9,6 @@ Pipeline ([Pipeline], [Bootstrap], [Run]):
 	fill → ecfg.LoadEnv → materialize → unique.Merge → Transform → sdi.Resolve
 
 Breaking v0.21: [Bootstrap] returns *App; [Pipeline.Registry] is *unique.Registry; [App.Serve] has no registry arg;
-catalog wire types are [Configurable] and [ResourceFactory] (not builder).
+catalog fields are [Configurable] or [ResourceFactory] resources (nil *Resource ok for configurable slots).
 */
 package app
