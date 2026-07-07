@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/omcrgnt/runner"
@@ -75,14 +76,27 @@ func (a *App) GracePeriod() time.Duration {
 }
 
 // Serve runs until ctx is cancelled, then stops resources via injected [runner.Runner].
+// If a starter fails, Serve stops the run context, shuts down, and returns the error.
 func (a *App) Serve(ctx context.Context) error {
 	if a.runner == nil {
 		return fmt.Errorf("app: runner not injected")
 	}
 
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
+
+	var (
+		runErrMu sync.Mutex
+		runErr   error
+	)
+
 	go func() {
 		if err := a.runner.Run(ctx); err != nil {
+			runErrMu.Lock()
+			runErr = err
+			runErrMu.Unlock()
 			slog.Error("runner failed", "err", err)
+			stop()
 		}
 	}()
 
@@ -92,6 +106,13 @@ func (a *App) Serve(ctx context.Context) error {
 	defer cancel()
 	if err := a.runner.Stop(shutdownCtx); err != nil {
 		return fmt.Errorf("app: shutdown: %w", err)
+	}
+
+	runErrMu.Lock()
+	err := runErr
+	runErrMu.Unlock()
+	if err != nil {
+		return fmt.Errorf("app: runner: %w", err)
 	}
 	return nil
 }
