@@ -38,7 +38,7 @@ func fill(appResources any, registrySpecs, registryResources *unique.Registry) e
 			if err != nil {
 				return fmt.Errorf("app: %s: BuildConfig: %w", sf.Name, err)
 			}
-			if spec == nil {
+			if isNilMaterializer(spec) {
 				return fmt.Errorf("app: %s: nil config spec", sf.Name)
 			}
 			seg, err := ecfg.CatalogSegment(sf)
@@ -61,6 +61,18 @@ func fill(appResources any, registrySpecs, registryResources *unique.Registry) e
 		}
 	}
 	return nil
+}
+
+// isNilMaterializer catches a Materializer holding a typed nil pointer
+// (e.g. a buggy BuildConfig returning (*SomeSpec)(nil), nil) — spec == nil
+// alone misses this: the interface value's type descriptor is non-nil even
+// though the underlying pointer is, so the comparison is false.
+func isNilMaterializer(spec Materializer) bool {
+	if spec == nil {
+		return true
+	}
+	rv := reflect.ValueOf(spec)
+	return rv.Kind() == reflect.Ptr && rv.IsNil()
 }
 
 func catalogCallable[T any](v reflect.Value) (T, bool) {

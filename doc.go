@@ -6,22 +6,26 @@ Add an [App] field to AppResources only to override app config from env (ecfg bl
 
 Pipeline ([Pipeline], [Bootstrap], [Run]):
 
-	fill → ecfg.LoadEnv → materialize → unique.Merge → Transform → sdi.Resolve → (Run only) Serve → runner.Runner.Run
+	fill → ecfg.LoadEnv → materialize → unique.Merge → Transform → sdi.Resolve → StandBy → (Run only) Serve → runner.Runner.Run
 
-[Bootstrap] ends at sdi.Resolve and returns. [Run] additionally calls [App.Serve], which hands off to
-runner.Runner.Run — this is where every resource's Start(ctx) runs, concurrently, with no ordering between them.
+[Bootstrap] ends at StandBy and returns. [Run] additionally calls [App.Serve], which hands off to
+runner.Runner.Run — this is where every resource's Start(ctx) runs, in two waves (see
+[github.com/omcrgnt/runner]'s package doc for the normal-Starter/LastStarter split).
 
-Lifecycle safety rule, across Inject and Start:
+Lifecycle safety rule, across Inject, StandBy, and Start:
 
   - Reading another resource's Inject-computed state from inside your own Inject is unsafe — sdi.Resolve
     calls Inject across all resources in one pass ordered by registration, not by the Deps() graph.
-  - Reading another resource's Start-computed state from inside your own Start is unsafe for the same
-    reason, and worse: runner.Runner.Run starts every Starter concurrently, so there is no registration-order
-    fallback either — two Starts race with no guaranteed winner.
-  - Reading anything — Inject- or Start-computed — from inside an ordinary method invoked only after the
-    whole pipeline above has finished (i.e. real request-handling code, never Inject or Start themselves) is
-    always safe, regardless of whether the dependency is a [runner.Starter]. Prefer this when a dependency's
-    real state is only available after its own Start.
+  - Reading another resource's Inject-computed state from inside your own [StandBy] is safe: StandBy runs
+    once sdi.Resolve has finished entirely, i.e. after every resource's Inject has already run.
+  - Reading another resource's Start-computed state from inside your own Start is unsafe within the same
+    wave — runner.Runner.Run starts every Starter in a wave concurrently, so there is no registration-order
+    fallback either, and two Starts race with no guaranteed winner. A [runner.LastStarter] is the one
+    exception: it may safely read normal-Starter Start-computed state.
+  - Reading anything — Inject-, StandBy-, or Start-computed — from inside an ordinary method invoked only
+    after the whole pipeline above has finished (i.e. real request-handling code, never Inject, StandBy, or
+    Start themselves) is always safe, regardless of whether the dependency is a [runner.Starter]. Prefer
+    this when a dependency's real state is only available after its own Start.
 
 Breaking v0.21: [Bootstrap] returns *App; [Pipeline.Registry] is *unique.Registry; [App.Serve] has no registry arg;
 catalog fields are [Configurable] or [ResourceFactory] resources (nil *Resource ok for configurable slots).
