@@ -21,10 +21,18 @@ type bootstrapResourcesCfgTag struct {
 
 type bootstrapResourcesNoApp struct{}
 
+// fakeGate satisfies runner.Runner's gateOpener dependency (Open(), no
+// args) — every registry using Runner must supply one, since runner.Gate
+// itself can only be constructed from inside its own package.
+type fakeGate struct{}
+
+func (*fakeGate) Open() {}
+
 func TestBootstrap_defaultAppFromUse(t *testing.T) {
 	reg := unique.New()
 	reg.MustAddReplaceable(app.DefaultApp())
 	reg.MustAddFixed(&runner.Runner{})
+	reg.MustAddFixed(&fakeGate{})
 
 	a, err := app.Bootstrap(&bootstrapResourcesNoApp{}, app.Pipeline{
 		Registry:  reg,
@@ -50,6 +58,7 @@ func TestBootstrap_injectsRunnerIntoApp(t *testing.T) {
 
 	reg := unique.New()
 	reg.MustAddFixed(&runner.Runner{})
+	reg.MustAddFixed(&fakeGate{})
 
 	var r bootstrapResources
 	a, err := app.Bootstrap(&r, app.Pipeline{
@@ -79,6 +88,7 @@ func TestBootstrap_customCatalogTagKey(t *testing.T) {
 
 	reg := unique.New()
 	reg.MustAddFixed(&runner.Runner{})
+	reg.MustAddFixed(&fakeGate{})
 
 	var r bootstrapResourcesCfgTag
 	a, err := app.Bootstrap(&r, app.Pipeline{

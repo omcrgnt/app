@@ -72,6 +72,13 @@ func Bootstrap(appResources any, p Pipeline) (*App, error) {
 		return nil, err
 	}
 
+	standByType := reflect.TypeOf((*StandBy)(nil)).Elem()
+	for _, e := range p.Registry.GetByInterface(standByType) {
+		if err := e.Value().(StandBy).StandBy(); err != nil {
+			return nil, fmt.Errorf("app: standby: %w", err)
+		}
+	}
+
 	return appFromReg(p.Registry)
 }
 
