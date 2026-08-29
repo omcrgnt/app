@@ -134,6 +134,56 @@ func TestFill_valueStructPointerMethods(t *testing.T) {
 	}
 }
 
+// typedNilSpecSlot's BuildConfig returns a typed nil pointer as the spec —
+// the buggy-implementation case isNilMaterializer exists to catch (a bare
+// spec == nil comparison misses this: the interface value's type
+// descriptor is non-nil even though the underlying pointer is).
+type typedNilSpecSlot struct{}
+
+func (*typedNilSpecSlot) BuildConfig() (Materializer, error) {
+	var spec *gSpec[string]
+	return spec, nil
+}
+
+// nilSpecSlot's BuildConfig returns a literal nil interface — the simpler
+// case isNilMaterializer's spec == nil check alone already caught, kept
+// covered separately from the typed-nil case above.
+type nilSpecSlot struct{}
+
+func (*nilSpecSlot) BuildConfig() (Materializer, error) {
+	return nil, nil
+}
+
+func TestFill_literalNilConfigSpec(t *testing.T) {
+	type catalog struct {
+		Slot *nilSpecSlot `ecfg:"SLOT"`
+	}
+	var c catalog
+
+	err := fill(&c, unique.New(), unique.New())
+	if err == nil {
+		t.Fatal("expected error for a nil config spec")
+	}
+	if !strings.Contains(err.Error(), "nil config spec") {
+		t.Fatalf("error = %v, want mention of nil config spec", err)
+	}
+}
+
+func TestFill_typedNilConfigSpec(t *testing.T) {
+	type catalog struct {
+		Slot *typedNilSpecSlot `ecfg:"SLOT"`
+	}
+	var c catalog
+
+	err := fill(&c, unique.New(), unique.New())
+	if err == nil {
+		t.Fatal("expected error for a typed-nil config spec")
+	}
+	if !strings.Contains(err.Error(), "nil config spec") {
+		t.Fatalf("error = %v, want mention of nil config spec", err)
+	}
+}
+
 func TestFill_bothInterfaces(t *testing.T) {
 	type catalog struct {
 		Both *bothResource[string]

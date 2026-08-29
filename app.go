@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -89,8 +90,10 @@ func (a *App) Serve(ctx context.Context) error {
 		runErrMu sync.Mutex
 		runErr   error
 	)
+	done := make(chan struct{})
 
 	go func() {
+		defer close(done)
 		if err := a.runner.Run(ctx); err != nil {
 			runErrMu.Lock()
 			runErr = err
@@ -101,18 +104,27 @@ func (a *App) Serve(ctx context.Context) error {
 	}()
 
 	<-ctx.Done()
+	// Wait for the Run goroutine to actually return before Stop scans
+	// r.started: ctx.Done alone only means cancellation was requested (by
+	// SIGTERM or by the goroutine above), not that every in-flight Start
+	// has returned — Stop would otherwise skip a resource that finishes
+	// starting a moment later, leaking whatever it opened.
+	<-done
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), a.GracePeriod())
 	defer cancel()
-	if err := a.runner.Stop(shutdownCtx); err != nil {
-		return fmt.Errorf("app: shutdown: %w", err)
-	}
+	stopErr := a.runner.Stop(shutdownCtx)
 
 	runErrMu.Lock()
-	err := runErr
+	rErr := runErr
 	runErrMu.Unlock()
-	if err != nil {
-		return fmt.Errorf("app: runner: %w", err)
+
+	var wrappedRunErr, wrappedStopErr error
+	if rErr != nil {
+		wrappedRunErr = fmt.Errorf("app: runner: %w", rErr)
 	}
-	return nil
+	if stopErr != nil {
+		wrappedStopErr = fmt.Errorf("app: shutdown: %w", stopErr)
+	}
+	return errors.Join(wrappedRunErr, wrappedStopErr)
 }

@@ -77,6 +77,51 @@ func TestBootstrap_standByRunsAfterAllInject(t *testing.T) {
 	}
 }
 
+// standByOrderN are distinct concrete types (MustAddFixed allows only one
+// resource per exact type) that each append a label to a shared slice —
+// used to pin StandBy's documented "registration order" guarantee across
+// multiple resolvers, not just the single-resolver case above.
+type standByOrder1 struct{ order *[]string }
+
+func (s *standByOrder1) StandBy() error { *s.order = append(*s.order, "first"); return nil }
+
+type standByOrder2 struct{ order *[]string }
+
+func (s *standByOrder2) StandBy() error { *s.order = append(*s.order, "second"); return nil }
+
+type standByOrder3 struct{ order *[]string }
+
+func (s *standByOrder3) StandBy() error { *s.order = append(*s.order, "third"); return nil }
+
+func TestBootstrap_standByRunsInRegistrationOrder(t *testing.T) {
+	reg := unique.New()
+	reg.MustAddReplaceable(app.DefaultApp())
+	reg.MustAddFixed(&runner.Runner{})
+	reg.MustAddFixed(&fakeGate{})
+
+	var order []string
+	reg.MustAddFixed(&standByOrder1{order: &order})
+	reg.MustAddFixed(&standByOrder2{order: &order})
+	reg.MustAddFixed(&standByOrder3{order: &order})
+
+	if _, err := app.Bootstrap(&bootstrapResourcesNoApp{}, app.Pipeline{
+		Registry:  reg,
+		EnvPrefix: "FIX",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"first", "second", "third"}
+	if len(order) != len(want) {
+		t.Fatalf("order = %v, want %v", order, want)
+	}
+	for i := range want {
+		if order[i] != want[i] {
+			t.Fatalf("order = %v, want %v", order, want)
+		}
+	}
+}
+
 type standByFailer struct{}
 
 func (*standByFailer) StandBy() error { return errStandBy }
