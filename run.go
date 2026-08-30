@@ -78,8 +78,8 @@ func Bootstrap(appResources any, p Pipeline) (*App, error) {
 	for _, e := range p.Registry.GetByInterface(standByType) {
 		v := e.Value()
 		if err := v.(StandBy).StandBy(); err != nil {
-			closeErr := closeStandBySucceeded(succeeded)
-			return nil, errors.Join(fmt.Errorf("app: standby: %w", err), closeErr)
+			cleanErr := cleanUpStandBySucceeded(succeeded)
+			return nil, errors.Join(fmt.Errorf("app: standby: %w", err), cleanErr)
 		}
 		succeeded = append(succeeded, v)
 	}
@@ -87,24 +87,17 @@ func Bootstrap(appResources any, p Pipeline) (*App, error) {
 	return appFromReg(p.Registry)
 }
 
-// closer is a runner.Closer-shaped duck type (no runner import) — used only
-// to close resources whose StandBy already succeeded when a later
-// resource's StandBy fails and aborts Bootstrap. Without this, that
-// failure path returns before runner.Run (and thus runner.Stop) is ever
-// reached, so nothing else would close them.
-type closer interface {
-	Close(context.Context) error
-}
-
-func closeStandBySucceeded(values []any) error {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultShutdownTimeout)
-	defer cancel()
-
+// cleanUpStandBySucceeded undoes whatever StandBy already set up for
+// resources implementing StandByCleaner, when a later resource's StandBy
+// fails and aborts Bootstrap. Without this, that failure path returns
+// before runner.Run (and thus runner.Stop) is ever reached, so nothing
+// else would undo it.
+func cleanUpStandBySucceeded(values []any) error {
 	var errs []error
 	for _, v := range values {
-		if c, ok := v.(closer); ok {
-			if err := c.Close(ctx); err != nil {
-				errs = append(errs, fmt.Errorf("app: standby cleanup: close %T: %w", v, err))
+		if c, ok := v.(StandByCleaner); ok {
+			if err := c.CleanUp(); err != nil {
+				errs = append(errs, fmt.Errorf("app: standby cleanup: %T: %w", v, err))
 			}
 		}
 	}

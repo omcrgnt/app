@@ -1,7 +1,6 @@
 package app_test
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -145,39 +144,39 @@ func TestBootstrap_standByErrorAbortsBootstrap(t *testing.T) {
 	}
 }
 
-// standByCloserA/B mimic client-grpc.Client: StandBy succeeds (e.g. dials a
-// connection), Close releases it. Distinct types (MustAddFixed) — A is
+// standByCleanerA/B mimic client-grpc.Client: StandBy succeeds (e.g. dials a
+// connection), CleanUp releases it. Distinct types (MustAddFixed) — A is
 // meant to register before the failing resource, B after.
-type standByCloserA struct {
-	closeErr error
-	closed   bool
+type standByCleanerA struct {
+	cleanUpErr error
+	cleanedUp  bool
 }
 
-func (s *standByCloserA) StandBy() error { return nil }
-func (s *standByCloserA) Close(context.Context) error {
-	s.closed = true
-	return s.closeErr
+func (s *standByCleanerA) StandBy() error { return nil }
+func (s *standByCleanerA) CleanUp() error {
+	s.cleanedUp = true
+	return s.cleanUpErr
 }
 
-type standByCloserB struct{ closed bool }
+type standByCleanerB struct{ cleanedUp bool }
 
-func (s *standByCloserB) StandBy() error { return nil }
-func (s *standByCloserB) Close(context.Context) error {
-	s.closed = true
+func (s *standByCleanerB) StandBy() error { return nil }
+func (s *standByCleanerB) CleanUp() error {
+	s.cleanedUp = true
 	return nil
 }
 
-func TestBootstrap_standByFailureClosesEarlierSucceeded(t *testing.T) {
+func TestBootstrap_standByFailureCleansUpEarlierSucceeded(t *testing.T) {
 	reg := unique.New()
 	reg.MustAddReplaceable(app.DefaultApp())
 	reg.MustAddFixed(&runner.Runner{})
 	reg.MustAddFixed(&fakeGate{})
 
-	a := &standByCloserA{}
-	b := &standByCloserB{}
-	reg.MustAddFixed(a) // registered before the failure: must be closed
+	a := &standByCleanerA{}
+	b := &standByCleanerB{}
+	reg.MustAddFixed(a) // registered before the failure: must be cleaned up
 	reg.MustAddFixed(&standByFailer{})
-	reg.MustAddFixed(b) // registered after the failure: StandBy never ran, must not be closed
+	reg.MustAddFixed(b) // registered after the failure: StandBy never ran, must not be cleaned up
 
 	_, err := app.Bootstrap(&bootstrapResourcesNoApp{}, app.Pipeline{
 		Registry:  reg,
@@ -186,22 +185,22 @@ func TestBootstrap_standByFailureClosesEarlierSucceeded(t *testing.T) {
 	if !errors.Is(err, errStandBy) {
 		t.Fatalf("err = %v, want to wrap %v", err, errStandBy)
 	}
-	if !a.closed {
-		t.Fatal("earlier-succeeded resource was not closed after a later StandBy failed")
+	if !a.cleanedUp {
+		t.Fatal("earlier-succeeded resource was not cleaned up after a later StandBy failed")
 	}
-	if b.closed {
-		t.Fatal("resource registered after the failure was closed, but its StandBy never ran")
+	if b.cleanedUp {
+		t.Fatal("resource registered after the failure was cleaned up, but its StandBy never ran")
 	}
 }
 
-func TestBootstrap_standByFailureJoinsCloseError(t *testing.T) {
+func TestBootstrap_standByFailureJoinsCleanUpError(t *testing.T) {
 	reg := unique.New()
 	reg.MustAddReplaceable(app.DefaultApp())
 	reg.MustAddFixed(&runner.Runner{})
 	reg.MustAddFixed(&fakeGate{})
 
-	closeErr := errors.New("close: boom")
-	reg.MustAddFixed(&standByCloserA{closeErr: closeErr})
+	cleanUpErr := errors.New("cleanup: boom")
+	reg.MustAddFixed(&standByCleanerA{cleanUpErr: cleanUpErr})
 	reg.MustAddFixed(&standByFailer{})
 
 	_, err := app.Bootstrap(&bootstrapResourcesNoApp{}, app.Pipeline{
@@ -211,7 +210,7 @@ func TestBootstrap_standByFailureJoinsCloseError(t *testing.T) {
 	if !errors.Is(err, errStandBy) {
 		t.Fatalf("err = %v, want to wrap %v", err, errStandBy)
 	}
-	if !errors.Is(err, closeErr) {
-		t.Fatalf("err = %v, want to also wrap %v", err, closeErr)
+	if !errors.Is(err, cleanUpErr) {
+		t.Fatalf("err = %v, want to also wrap %v", err, cleanUpErr)
 	}
 }
