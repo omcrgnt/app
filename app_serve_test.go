@@ -19,12 +19,12 @@ type slowThenCloseableStarter struct {
 	closed     bool
 }
 
-func (s *slowThenCloseableStarter) Start(context.Context) error {
+func (s *slowThenCloseableStarter) Start(context.Context) (func(context.Context) error, error) {
 	time.Sleep(s.startDelay)
-	return nil
+	return s.cleanup, nil
 }
 
-func (s *slowThenCloseableStarter) Close(context.Context) error {
+func (s *slowThenCloseableStarter) cleanup(context.Context) error {
 	s.closed = true
 	return nil
 }
@@ -35,7 +35,7 @@ func TestServe_joinsRunBeforeStop(t *testing.T) {
 	r := &runner.Runner{}
 	r.Inject([]any{
 		[]runner.Starter{starter},
-		[]runner.Closer{starter},
+		nil,
 	})
 	a := &app.App{}
 	a.Inject([]any{r})
@@ -54,20 +54,32 @@ func TestServe_joinsRunBeforeStop(t *testing.T) {
 
 type startFailer struct{}
 
-func (startFailer) Start(context.Context) error { return errors.New("boom-start") }
+func (startFailer) Start(context.Context) (func(context.Context) error, error) {
+	return nil, errors.New("boom-start")
+}
 
 type closeFailer struct{}
 
-func (closeFailer) Start(context.Context) error { return nil }
-func (closeFailer) Close(context.Context) error { return errors.New("boom-close") }
+func (closeFailer) Start(context.Context) (func(context.Context) error, error) {
+	return func(context.Context) error { return errors.New("boom-close") }, nil
+}
 
-func TestServe_combinedRunAndStopErrors(t *testing.T) {
+// TestServe_runFailureIncludesRollbackCleanupError: when a sibling Starter
+// fails in the same wave, runner.Runner.Run rolls back cf's already-started
+// cleanup itself — synchronously, before Run even returns — so
+// "boom-close" ends up joined into wrappedRunErr, not wrappedStopErr. By
+// the time app.go's own a.runner.Stop(shutdownCtx) call runs afterward,
+// Run's rollback has already consumed and cleared cf's cleanup, so Stop
+// finds nothing left to close and returns nil. This test only exercises
+// that joined-Run-error path; see TestServe_stopCleanupError for the
+// wrappedStopErr path (a real Stop-phase failure after a successful Run).
+func TestServe_runFailureIncludesRollbackCleanupError(t *testing.T) {
 	cf := closeFailer{}
 
 	r := &runner.Runner{}
 	r.Inject([]any{
 		[]runner.Starter{startFailer{}, cf},
-		[]runner.Closer{cf},
+		nil,
 	})
 	a := &app.App{}
 	a.Inject([]any{r})
@@ -83,6 +95,52 @@ func TestServe_combinedRunAndStopErrors(t *testing.T) {
 		t.Errorf("missing runner/start error in: %v", err)
 	}
 	if !strings.Contains(err.Error(), "boom-close") {
-		t.Errorf("missing shutdown/close error in: %v", err)
+		t.Errorf("missing rollback cleanup error in: %v", err)
+	}
+	if !strings.Contains(err.Error(), "app: runner:") {
+		t.Errorf("expected both errors wrapped under app: runner:, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "app: shutdown:") {
+		t.Errorf("boom-close was already consumed by Run's own rollback — must not also appear under app: shutdown:, got: %v", err)
+	}
+}
+
+// startOKCleanupFailer starts successfully so its cleanup survives into the
+// real a.runner.Stop(shutdownCtx) call in app.go — unlike closeFailer above,
+// whose cleanup runner.Runner.Run's own rollback would otherwise consume
+// first if paired with a failing sibling.
+type startOKCleanupFailer struct{}
+
+func (startOKCleanupFailer) Start(context.Context) (func(context.Context) error, error) {
+	return func(context.Context) error { return errors.New("boom-close") }, nil
+}
+
+// TestServe_stopCleanupError covers wrappedStopErr in app.go's Serve: a
+// Starter that starts cleanly, runs until ctx is cancelled, and whose
+// cleanup then fails during the real a.runner.Stop(shutdownCtx) call — the
+// one branch TestServe_runFailureIncludesRollbackCleanupError's rename made
+// clear was not actually exercised (that test's "boom-close" is consumed
+// by Run's own rollback before Stop ever runs).
+func TestServe_stopCleanupError(t *testing.T) {
+	r := &runner.Runner{}
+	r.Inject([]any{
+		[]runner.Starter{startOKCleanupFailer{}},
+		nil,
+	})
+	a := &app.App{}
+	a.Inject([]any{r})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	err := a.Serve(ctx)
+	if err == nil {
+		t.Fatal("expected a shutdown error")
+	}
+	if !strings.Contains(err.Error(), "app: shutdown:") {
+		t.Errorf("missing app: shutdown: wrapper in: %v", err)
+	}
+	if !strings.Contains(err.Error(), "boom-close") {
+		t.Errorf("missing close error in: %v", err)
 	}
 }
