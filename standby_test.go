@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -141,5 +142,76 @@ func TestBootstrap_standByErrorAbortsBootstrap(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("want error, got nil")
+	}
+}
+
+// standByCloserA/B mimic client-grpc.Client: StandBy succeeds (e.g. dials a
+// connection), Close releases it. Distinct types (MustAddFixed) — A is
+// meant to register before the failing resource, B after.
+type standByCloserA struct {
+	closeErr error
+	closed   bool
+}
+
+func (s *standByCloserA) StandBy() error { return nil }
+func (s *standByCloserA) Close(context.Context) error {
+	s.closed = true
+	return s.closeErr
+}
+
+type standByCloserB struct{ closed bool }
+
+func (s *standByCloserB) StandBy() error { return nil }
+func (s *standByCloserB) Close(context.Context) error {
+	s.closed = true
+	return nil
+}
+
+func TestBootstrap_standByFailureClosesEarlierSucceeded(t *testing.T) {
+	reg := unique.New()
+	reg.MustAddReplaceable(app.DefaultApp())
+	reg.MustAddFixed(&runner.Runner{})
+	reg.MustAddFixed(&fakeGate{})
+
+	a := &standByCloserA{}
+	b := &standByCloserB{}
+	reg.MustAddFixed(a) // registered before the failure: must be closed
+	reg.MustAddFixed(&standByFailer{})
+	reg.MustAddFixed(b) // registered after the failure: StandBy never ran, must not be closed
+
+	_, err := app.Bootstrap(&bootstrapResourcesNoApp{}, app.Pipeline{
+		Registry:  reg,
+		EnvPrefix: "FIX",
+	})
+	if !errors.Is(err, errStandBy) {
+		t.Fatalf("err = %v, want to wrap %v", err, errStandBy)
+	}
+	if !a.closed {
+		t.Fatal("earlier-succeeded resource was not closed after a later StandBy failed")
+	}
+	if b.closed {
+		t.Fatal("resource registered after the failure was closed, but its StandBy never ran")
+	}
+}
+
+func TestBootstrap_standByFailureJoinsCloseError(t *testing.T) {
+	reg := unique.New()
+	reg.MustAddReplaceable(app.DefaultApp())
+	reg.MustAddFixed(&runner.Runner{})
+	reg.MustAddFixed(&fakeGate{})
+
+	closeErr := errors.New("close: boom")
+	reg.MustAddFixed(&standByCloserA{closeErr: closeErr})
+	reg.MustAddFixed(&standByFailer{})
+
+	_, err := app.Bootstrap(&bootstrapResourcesNoApp{}, app.Pipeline{
+		Registry:  reg,
+		EnvPrefix: "FIX",
+	})
+	if !errors.Is(err, errStandBy) {
+		t.Fatalf("err = %v, want to wrap %v", err, errStandBy)
+	}
+	if !errors.Is(err, closeErr) {
+		t.Fatalf("err = %v, want to also wrap %v", err, closeErr)
 	}
 }

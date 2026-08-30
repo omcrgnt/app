@@ -12,6 +12,13 @@ Pipeline ([Pipeline], [Bootstrap], [Run]):
 runner.Runner.Run — this is where every resource's Start(ctx) runs, in two waves (see
 [github.com/omcrgnt/runner]'s package doc for the normal-Starter/LastStarter split).
 
+If any [StandBy] call fails, [Bootstrap] closes every already-succeeded StandBy resource that also
+implements a Close(context.Context) error method (registration order, same convention as
+runner.Runner.Stop), then returns the StandBy error joined with any close errors. This runs
+regardless of what the caller does with the returned error — runner.Runner.Stop is never reached in
+this path (Run is never called), so without it a resource like a dialed *grpc.ClientConn would
+otherwise depend on the caller exiting the process for the OS to reclaim it.
+
 Lifecycle safety rule, across Inject, StandBy, and Start:
 
   - Reading another resource's Inject-computed state from inside your own Inject is unsafe — sdi.Resolve
