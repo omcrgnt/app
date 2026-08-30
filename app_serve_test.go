@@ -19,12 +19,12 @@ type slowThenCloseableStarter struct {
 	closed     bool
 }
 
-func (s *slowThenCloseableStarter) Start(context.Context) error {
+func (s *slowThenCloseableStarter) Start(context.Context) (func(context.Context) error, error) {
 	time.Sleep(s.startDelay)
-	return nil
+	return s.cleanup, nil
 }
 
-func (s *slowThenCloseableStarter) Close(context.Context) error {
+func (s *slowThenCloseableStarter) cleanup(context.Context) error {
 	s.closed = true
 	return nil
 }
@@ -35,7 +35,7 @@ func TestServe_joinsRunBeforeStop(t *testing.T) {
 	r := &runner.Runner{}
 	r.Inject([]any{
 		[]runner.Starter{starter},
-		[]runner.Closer{starter},
+		nil,
 	})
 	a := &app.App{}
 	a.Inject([]any{r})
@@ -54,12 +54,15 @@ func TestServe_joinsRunBeforeStop(t *testing.T) {
 
 type startFailer struct{}
 
-func (startFailer) Start(context.Context) error { return errors.New("boom-start") }
+func (startFailer) Start(context.Context) (func(context.Context) error, error) {
+	return nil, errors.New("boom-start")
+}
 
 type closeFailer struct{}
 
-func (closeFailer) Start(context.Context) error { return nil }
-func (closeFailer) Close(context.Context) error { return errors.New("boom-close") }
+func (closeFailer) Start(context.Context) (func(context.Context) error, error) {
+	return func(context.Context) error { return errors.New("boom-close") }, nil
+}
 
 func TestServe_combinedRunAndStopErrors(t *testing.T) {
 	cf := closeFailer{}
@@ -67,7 +70,7 @@ func TestServe_combinedRunAndStopErrors(t *testing.T) {
 	r := &runner.Runner{}
 	r.Inject([]any{
 		[]runner.Starter{startFailer{}, cf},
-		[]runner.Closer{cf},
+		nil,
 	})
 	a := &app.App{}
 	a.Inject([]any{r})

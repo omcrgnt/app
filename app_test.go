@@ -12,8 +12,8 @@ import (
 
 type failingStarter struct{}
 
-func (failingStarter) Start(context.Context) error {
-	return errors.New("bind: address already in use")
+func (failingStarter) Start(context.Context) (func(context.Context) error, error) {
+	return nil, errors.New("bind: address already in use")
 }
 
 func TestServe_runnerStartFailureReturnsError(t *testing.T) {

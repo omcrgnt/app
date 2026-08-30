@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -73,35 +72,7 @@ func Bootstrap(appResources any, p Pipeline) (*App, error) {
 		return nil, err
 	}
 
-	standByType := reflect.TypeOf((*StandBy)(nil)).Elem()
-	var succeeded []any
-	for _, e := range p.Registry.GetByInterface(standByType) {
-		v := e.Value()
-		if err := v.(StandBy).StandBy(); err != nil {
-			cleanErr := cleanUpStandBySucceeded(succeeded)
-			return nil, errors.Join(fmt.Errorf("app: standby: %w", err), cleanErr)
-		}
-		succeeded = append(succeeded, v)
-	}
-
 	return appFromReg(p.Registry)
-}
-
-// cleanUpStandBySucceeded undoes whatever StandBy already set up for
-// resources implementing StandByCleaner, when a later resource's StandBy
-// fails and aborts Bootstrap. Without this, that failure path returns
-// before runner.Run (and thus runner.Stop) is ever reached, so nothing
-// else would undo it.
-func cleanUpStandBySucceeded(values []any) error {
-	var errs []error
-	for _, v := range values {
-		if c, ok := v.(StandByCleaner); ok {
-			if err := c.CleanUp(); err != nil {
-				errs = append(errs, fmt.Errorf("app: standby cleanup: %T: %w", v, err))
-			}
-		}
-	}
-	return errors.Join(errs...)
 }
 
 func appFromReg(reg *unique.Registry) (*App, error) {

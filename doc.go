@@ -6,25 +6,21 @@ Add an [App] field to AppResources only to override app config from env (ecfg bl
 
 Pipeline ([Pipeline], [Bootstrap], [Run]):
 
-	fill → ecfg.LoadEnv → materialize → unique.Merge → Transform → sdi.Resolve → StandBy → (Run only) Serve → runner.Runner.Run
+	fill → ecfg.LoadEnv → materialize → unique.Merge → Transform → sdi.Resolve → (Run only) Serve → runner.Runner.Run
 
-[Bootstrap] ends at StandBy and returns. [Run] additionally calls [App.Serve], which hands off to
-runner.Runner.Run — this is where every resource's Start(ctx) runs, in two waves (see
-[github.com/omcrgnt/runner]'s package doc for the normal-Starter/LastStarter split).
+[Bootstrap] ends at sdi.Resolve and returns. [Run] additionally calls [App.Serve], which hands off to
+runner.Runner.Run — this is where the StandBy phase and every resource's Start(ctx) run, in that
+order (see [github.com/omcrgnt/runner]'s package doc for the full StandBy→Start ordering, the
+normal-Starter/LastStarter split, and how each phase's cleanup ties back into runner.Runner.Stop).
 
-If any [StandBy] call fails, [Bootstrap] calls CleanUp on every already-succeeded resource
-implementing [StandByCleaner] (registration order), then returns the StandBy error joined with any
-CleanUp errors. This runs regardless of what the caller does with the returned error —
-runner.Runner.Stop is never reached in this path (Run is never called), so without it a resource
-like a dialed *grpc.ClientConn would otherwise depend on the caller exiting the process for the OS
-to reclaim it.
-
-Lifecycle safety rule, across Inject, StandBy, and Start:
+Lifecycle safety rule, across Inject, StandBy, and Start — see
+[github.com/omcrgnt/runner]'s package doc for what StandBy and Start are and how their cleanups
+work; this rule is about what each may safely read of another resource's state:
 
   - Reading another resource's Inject-computed state from inside your own Inject is unsafe — sdi.Resolve
     calls Inject across all resources in one pass ordered by registration, not by the Deps() graph.
-  - Reading another resource's Inject-computed state from inside your own [StandBy] is safe: StandBy runs
-    once sdi.Resolve has finished entirely, i.e. after every resource's Inject has already run.
+  - Reading another resource's Inject-computed state from inside your own [runner.StandBy] is safe:
+    StandBy runs once sdi.Resolve has finished entirely, i.e. after every resource's Inject has already run.
   - Reading another resource's Start-computed state from inside your own Start is unsafe within the same
     wave — runner.Runner.Run starts every Starter in a wave concurrently, so there is no registration-order
     fallback either, and two Starts race with no guaranteed winner. A [runner.LastStarter] is the one
@@ -36,5 +32,8 @@ Lifecycle safety rule, across Inject, StandBy, and Start:
 
 Breaking v0.21: [Bootstrap] returns *App; [Pipeline.Registry] is *unique.Registry; [App.Serve] has no registry arg;
 catalog fields are [Configurable] or [ResourceFactory] resources (nil *Resource ok for configurable slots).
+
+Breaking v0.24: the StandBy phase moved to [github.com/omcrgnt/runner] ([runner.StandBy]) — [Bootstrap]
+no longer runs or knows about it; [App.Serve] → runner.Runner.Run now covers it instead.
 */
 package app
