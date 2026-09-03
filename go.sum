@@ -24,10 +24,8 @@ github.com/omcrgnt/proto/gen/go v0.3.0 h1:N9ouU9osJ4stmED6LnY2cCUJe21XBommhel5tS
 github.com/omcrgnt/proto/gen/go v0.3.0/go.mod h1:XylKqMXLSRptwAPtnGx/s+tEVZoEvvkGJov6BgtYdz4=
 github.com/omcrgnt/res v0.22.0 h1:OCtaKOvcZq2johftmw6ZcfY9k5rmyfVOyHFeRTv0kOU=
 github.com/omcrgnt/res v0.22.0/go.mod h1:mYMNfATQOqfJ+jOBPY/eZoKWlnmfSggkQCmX5xkt2Fc=
-github.com/omcrgnt/runner v0.22.0 h1:3QIz4Af+QpoUrlUbqGqq/sDfm2OAYRIDr/Y36GTkHoU=
-github.com/omcrgnt/runner v0.22.0/go.mod h1:X18rRVW3V/dIEU7wrpsEveCp1RkyeDNvMsYdus/1uCA=
-github.com/omcrgnt/runner v0.23.0 h1:xekL2lkRGp1oPv3Oqu9mKqcbv9rnPjVZsM+K1ogtjaQ=
-github.com/omcrgnt/runner v0.23.0/go.mod h1:X18rRVW3V/dIEU7wrpsEveCp1RkyeDNvMsYdus/1uCA=
+github.com/omcrgnt/runner v0.24.0 h1:+A68Ozw1CGwCQQMJjoTDQirMHOPO9QX3IeX2Qi4oZys=
+github.com/omcrgnt/runner v0.24.0/go.mod h1:X18rRVW3V/dIEU7wrpsEveCp1RkyeDNvMsYdus/1uCA=
 github.com/omcrgnt/sdi v0.21.0 h1:Gp0DWb+X9A/uHDf0PieHAyKEvgdIoDTgc/KotdHvyhs=
 github.com/omcrgnt/sdi v0.21.0/go.mod h1:adV8pjy+VADDebhyE5Y01dt+NZf4xPoBPqNvPqPQBn0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

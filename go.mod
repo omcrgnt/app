@@ -10,7 +10,7 @@ retract (
 require (
 	github.com/omcrgnt/ecfg v0.21.2
 	github.com/omcrgnt/res v0.22.0
-	github.com/omcrgnt/runner v0.23.0
+	github.com/omcrgnt/runner v0.24.0
 	github.com/omcrgnt/sdi v0.21.0
 )
 
